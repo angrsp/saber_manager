@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:usb_serial/usb_serial.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 // Modello dati per dispositivi saber
 class SaberDevice {
@@ -74,19 +73,20 @@ class PermissionDeniedException extends SaberException {
 
 // Servizio principale USB
 class USBService {
-  static const int BAUD_RATE = 1152000;
-  static const int CHUNK_SIZE = 128;
-  static const Duration READ_TIMEOUT = Duration(seconds: 3);
-  static const Duration CHUNK_DELAY = Duration(milliseconds: 500);
+  static const int baudRate = 1152000;
+  static const int chunkSize = 128;
+  static const Duration readTimeout = Duration(seconds: 5);
+  static const Duration chunkDelay = Duration(milliseconds: 500);
+  static const Duration connectionStabilizationDelay = Duration(seconds: 2);
 
   // OpenCore Device IDs (convertiti da hex a decimale)
-  static const List<Map<String, int>> ANIMA_DEVICES = [
+  static const List<Map<String, int>> animaDevices = [
     {'vid': 0x16C0, 'pid': 0x0483}, // Anima EVO
     {'vid': 0x0483, 'pid': 0x5740}, // Anima NXT
   ];
 
   UsbPort? _port;
-  StreamSubscription<Uint8List>? _subscription; // Corretto: Uint8List invece di String
+  StreamSubscription<Uint8List>? _subscription;
   SaberDevice? _connectedDevice;
 
   // Stream controllers per eventi
@@ -102,6 +102,9 @@ class USBService {
   // Getters
   bool get isConnected => _port != null && _connectedDevice != null;
   SaberDevice? get connectedDevice => _connectedDevice;
+  
+  // NUOVO: Esponi la porta USB per il SaberProtocolService
+  UsbPort? get connectedPort => _port;
 
   // Richiedi permessi USB
   Future<bool> requestPermissions() async {
@@ -162,74 +165,70 @@ class USBService {
       return sabers;
     } catch (e) {
       _updateStatus('Scan error: $e');
-      print('❌ Scan error: $e');
-      return [];
+      throw SaberException('Scan failed: $e');
     }
   }
 
-  // Connetti a un saber specifico
-  Future<SaberDevice?> connectToSaber(SaberDevice saber) async {
+  // Connetti a un dispositivo
+  Future<SaberDevice?> connectToDevice(SaberDevice saber) async {
     try {
       _updateStatus('Connecting to ${saber.name}...');
-      
-      // Disconnetti se già connesso
-      if (isConnected) {
-        await disconnect();
-      }
+      print('🔌 Attempting connection to ${saber.name}');
 
-      // Crea connessione USB
+      // Crea la porta USB
       _port = await saber.usbDevice.create();
       if (_port == null) {
         throw SaberException('Failed to create USB port');
       }
 
-      // Apri la porta
+      // Apri la connessione
       bool opened = await _port!.open();
       if (!opened) {
+        _port = null;
         throw SaberException('Failed to open USB port');
       }
 
-      // Configura parametri seriali
+      // Configura i parametri della porta
       await _port!.setDTR(true);
-      await _port!.setRTS(true);
+      await _port!.setRTS(false);
       await _port!.setPortParameters(
-        BAUD_RATE,
-        UsbPort.DATABITS_8,
-        UsbPort.STOPBITS_1,
-        UsbPort.PARITY_NONE,
+        baudRate, 
+        UsbPort.DATABITS_8, 
+        UsbPort.STOPBITS_1, 
+        UsbPort.PARITY_NONE
       );
 
-      print('🔧 USB port configured: $BAUD_RATE baud');
+      print('✅ USB port opened successfully');
 
-      // Test connessione con comando ready
-      if (await _isReady()) {
-        _updateStatus('Testing saber communication...');
-        
-        // Ottieni info dal saber
-        Map<String, String> info = await _getSaberInfo();
-        
-        _connectedDevice = saber.copyWith(
-          isConnected: true,
-          firmwareVersion: info['version'],
-          serialNumber: info['serial'],
-        );
+      // Aspetta più tempo per la stabilizzazione
+      print('⏳ Waiting for connection stabilization...');
+      await Future.delayed(connectionStabilizationDelay);
 
-        _updateStatus('Connected to ${saber.name}');
-        
-        print('🎉 Successfully connected to ${saber.name}');
-        print('   Firmware: ${info['version']}');
-        print('   Serial: ${info['serial']}');
-        
-        return _connectedDevice;
-      } else {
+      // Tenta diversi metodi per verificare la connessione
+      bool isReady = await _checkSaberReadyMultiple();
+      if (!isReady) {
         await disconnect();
-        throw SaberException('Saber not responding - try restarting it');
+        throw SaberException('Saber not responding');
       }
+
+      // Ottieni informazioni dalla saber
+      Map<String, String> info = await _getSaberInfo();
+      
+      // Crea il dispositivo connesso con le informazioni aggiornate
+      _connectedDevice = saber.copyWith(
+        isConnected: true,
+        firmwareVersion: info['version'],
+        serialNumber: info['serial'],
+      );
+
+      _updateStatus('Connected to ${_connectedDevice!.name}');
+      print('🎉 Successfully connected to ${_connectedDevice!.name}');
+      
+      return _connectedDevice;
     } catch (e) {
-      _updateStatus('Connection failed: $e');
-      print('❌ Connection error: $e');
+      print('❌ Connection failed: $e');
       await disconnect();
-      return null;
+      throw SaberException('Connection failed: $e');
     }
   }
 
@@ -237,25 +236,71 @@ class USBService {
   Future<void> disconnect() async {
     try {
       _subscription?.cancel();
+      _subscription = null;
+      
       await _port?.close();
       _port = null;
+      
       _connectedDevice = null;
       _updateStatus('Disconnected');
       print('🔌 Disconnected from saber');
     } catch (e) {
-      print('❌ Disconnect error: $e');
+      print('❌ Error during disconnect: $e');
     }
   }
 
-  // Test se il saber è pronto a ricevere comandi
-  Future<bool> _isReady() async {
+  // Verifica se la saber è pronta - metodi multipli
+  Future<bool> _checkSaberReadyMultiple() async {
+    print('🔍 Testing saber communication...');
+    
+    // Metodo 1: Comando backslash (originale)
+    if (await _testCommand('\\', ['OK, Write Ready', 'OK', 'Write Ready'])) {
+      print('✅ Saber responded to \\ command');
+      return true;
+    }
+    
+    // Metodo 2: Comando di versione
+    if (await _testCommand('V?', ['V=', 'Version'])) {
+      print('✅ Saber responded to V? command');
+      return true;
+    }
+    
+    // Metodo 3: Comando di help
+    if (await _testCommand('?', ['Help', 'Commands', 'Available'])) {
+      print('✅ Saber responded to ? command');
+      return true;
+    }
+    
+    // Metodo 4: Solo newline
+    if (await _testCommand('', ['>', 'OK', 'Ready'])) {
+      print('✅ Saber responded to newline');
+      return true;
+    }
+    
+    print('❌ Saber not responding to any test commands');
+    return false;
+  }
+
+  // Testa un comando specifico
+  Future<bool> _testCommand(String command, List<String> expectedResponses) async {
     try {
-      await _sendCommand('WR?');
+      print('📤 Testing command: "${command}"');
+      
+      await _sendCommand(command);
       String response = await _readLine();
-      print('📡 Ready check response: $response');
-      return response.trim() == 'OK, Write Ready';
+      
+      print('📥 Received: "$response"');
+      
+      // Verifica se la risposta contiene una delle stringhe attese
+      for (String expected in expectedResponses) {
+        if (response.contains(expected)) {
+          return true;
+        }
+      }
+      
+      return false;
     } catch (e) {
-      print('❌ Ready check failed: $e');
+      print('❌ Test command failed: $e');
       return false;
     }
   }
@@ -268,18 +313,28 @@ class USBService {
       // Versione firmware
       await _sendCommand('V?');
       String versionResponse = await _readLine();
-      if (versionResponse.startsWith('V=')) {
-        info['version'] = versionResponse.substring(2).trim();
+      print('📡 Version response: $versionResponse');
+      
+      if (versionResponse.contains('V=')) {
+        info['version'] = versionResponse.substring(versionResponse.indexOf('V=') + 2).trim();
+      } else if (versionResponse.isNotEmpty && !versionResponse.startsWith('#')) {
+        // Se non è nel formato V=, prendi la risposta come versione
+        info['version'] = versionResponse.trim();
       }
 
       // Numero seriale
       await _sendCommand('S?');
       String serialResponse = await _readLine();
-      if (serialResponse.startsWith('S=')) {
-        info['serial'] = serialResponse.substring(2).trim();
+      print('📡 Serial response: $serialResponse');
+      
+      if (serialResponse.contains('S=')) {
+        info['serial'] = serialResponse.substring(serialResponse.indexOf('S=') + 2).trim();
+      } else if (serialResponse.isNotEmpty && !serialResponse.startsWith('#')) {
+        info['serial'] = serialResponse.trim();
       }
     } catch (e) {
       print('❌ Error getting saber info: $e');
+      // Non è critico se non riusciamo a ottenere le info
     }
 
     return info;
@@ -289,25 +344,29 @@ class USBService {
   Future<void> _sendCommand(String cmd) async {
     if (_port == null) throw SaberException('Not connected');
 
-    List<int> data = '$cmd\n'.codeUnits;
-    print('📤 Sending: $cmd');
+    String fullCommand = cmd.isEmpty ? '\n' : '$cmd\n';
+    List<int> data = fullCommand.codeUnits;
+    print('📤 Sending: "${cmd}" (${data.length} bytes)');
 
-    if (data.length <= CHUNK_SIZE) {
+    if (data.length <= chunkSize) {
       await _port!.write(Uint8List.fromList(data));
     } else {
       // Invia a chunk per evitare buffer overflow
-      for (int i = 0; i < data.length; i += CHUNK_SIZE) {
-        int end = (i + CHUNK_SIZE > data.length) ? data.length : i + CHUNK_SIZE;
+      for (int i = 0; i < data.length; i += chunkSize) {
+        int end = (i + chunkSize > data.length) ? data.length : i + chunkSize;
         await _port!.write(Uint8List.fromList(data.sublist(i, end)));
 
         if (end < data.length) {
-          await Future.delayed(CHUNK_DELAY);
+          await Future.delayed(chunkDelay);
         }
       }
     }
+    
+    // Piccola pausa dopo l'invio
+    await Future.delayed(const Duration(milliseconds: 100));
   }
 
-  // Leggi risposta dal saber
+  // Leggi risposta dal saber con timeout più lungo
   Future<String> _readLine() async {
     if (_port == null) throw SaberException('Not connected');
 
@@ -315,32 +374,42 @@ class USBService {
     Completer<String> completer = Completer();
     Timer? timeout;
 
-    timeout = Timer(READ_TIMEOUT, () {
+    timeout = Timer(readTimeout, () {
       if (!completer.isCompleted) {
+        print('⏰ Read timeout after ${readTimeout.inSeconds}s');
         completer.completeError(ConnectionTimeoutException());
       }
     });
 
-    // CORRETTO: Usa Uint8List e converti a String
     _subscription = _port!.inputStream?.listen((Uint8List data) {
-      String dataString = String.fromCharCodes(data); // Conversione Uint8List -> String
+      String dataString = String.fromCharCodes(data);
       response += dataString;
       
-      if (response.contains('\n')) {
+      print('📨 Raw data received: ${data.map((e) => e.toRadixString(16)).join(' ')}');
+      print('📨 String received: "$dataString"');
+      
+      if (response.contains('\n') || response.contains('\r')) {
         timeout?.cancel();
         _subscription?.cancel();
         
-        // Filtra messaggi di debug che iniziano con '#'
-        List<String> lines = response.split('\n');
+        // Pulisci la risposta
+        List<String> lines = response.split(RegExp(r'[\r\n]'));
         for (String line in lines) {
           line = line.trim();
           if (line.isNotEmpty && !line.startsWith('#')) {
             if (!completer.isCompleted) {
-              print('📥 Received: $line');
+              print('📥 Cleaned response: "$line"');
               completer.complete(line);
             }
             return;
           }
+        }
+        
+        // Se non troviamo righe valide ma abbiamo dati, restituisci la risposta grezza
+        if (!completer.isCompleted && response.trim().isNotEmpty) {
+          String cleanResponse = response.trim().replaceAll(RegExp(r'[\r\n]'), '');
+          print('📥 Fallback response: "$cleanResponse"');
+          completer.complete(cleanResponse);
         }
       }
     });
@@ -348,9 +417,19 @@ class USBService {
     return completer.future;
   }
 
+  // NUOVO: Metodo per inviare comandi raw (usato dal SaberProtocolService)
+  Future<void> sendRawCommand(String command) async {
+    await _sendCommand(command);
+  }
+
+  // NUOVO: Metodo per leggere risposta raw (usato dal SaberProtocolService)
+  Future<String> readRawResponse() async {
+    return await _readLine();
+  }
+
   // Utility methods
   bool _isAnimaDevice(UsbDevice device) {
-    return ANIMA_DEVICES.any((anima) =>
+    return animaDevices.any((anima) =>
         device.vid == anima['vid'] && device.pid == anima['pid']);
   }
 
