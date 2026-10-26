@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'services/usb_service.dart';
+import 'models/saber_device.dart';
 
 class AppState extends ChangeNotifier {
   SaberDevice? _connectedSaber;

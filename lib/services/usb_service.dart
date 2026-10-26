@@ -1,75 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:usb_serial/usb_serial.dart';
-
-// Modello dati per dispositivi saber
-class SaberDevice {
-  final UsbDevice usbDevice;
-  final String name;
-  final SaberType type;
-  final String? firmwareVersion;
-  final String? serialNumber;
-  final bool isConnected;
-
-  SaberDevice({
-    required this.usbDevice,
-    required this.name,
-    required this.type,
-    this.firmwareVersion,
-    this.serialNumber,
-    this.isConnected = false,
-  });
-
-  SaberDevice copyWith({
-    UsbDevice? usbDevice,
-    String? name,
-    SaberType? type,
-    String? firmwareVersion,
-    String? serialNumber,
-    bool? isConnected,
-  }) {
-    return SaberDevice(
-      usbDevice: usbDevice ?? this.usbDevice,
-      name: name ?? this.name,
-      type: type ?? this.type,
-      firmwareVersion: firmwareVersion ?? this.firmwareVersion,
-      serialNumber: serialNumber ?? this.serialNumber,
-      isConnected: isConnected ?? this.isConnected,
-    );
-  }
-
-  @override
-  String toString() {
-    return 'SaberDevice(name: $name, type: $type, fw: $firmwareVersion, connected: $isConnected)';
-  }
-}
-
-enum SaberType {
-  animaEVO,
-  animaNXT,
-  unknown,
-}
-
-// Exception personalizzate
-class SaberException implements Exception {
-  final String message;
-  SaberException(this.message);
-  
-  @override
-  String toString() => 'SaberException: $message';
-}
-
-class NoSaberFoundException extends SaberException {
-  NoSaberFoundException() : super('No compatible saber found');
-}
-
-class ConnectionTimeoutException extends SaberException {
-  ConnectionTimeoutException() : super('Connection timeout');
-}
-
-class PermissionDeniedException extends SaberException {
-  PermissionDeniedException() : super('USB permission denied');
-}
+import '../models/saber_device.dart';
+import '../models/saber_exceptions.dart';
 
 // Servizio principale USB
 class USBService {
@@ -86,6 +19,8 @@ class USBService {
   ];
 
   UsbPort? _port;
+  // Dispositivi USB dell'ultima scansione, per id del SaberDevice
+  final Map<String, UsbDevice> _usbDevices = {};
   StreamSubscription<Uint8List>? _subscription;
   SaberDevice? _connectedDevice;
 
@@ -133,6 +68,7 @@ class USBService {
       
       List<UsbDevice> devices = await UsbSerial.listDevices();
       List<SaberDevice> sabers = [];
+      _usbDevices.clear();
 
       debugPrint('Found ${devices.length} USB devices');
       
@@ -144,11 +80,12 @@ class USBService {
           String name = _generateSaberName(device, type);
           
           SaberDevice saber = SaberDevice(
-            usbDevice: device,
+            id: '${device.deviceId}',
             name: name,
             type: type,
           );
           
+          _usbDevices[saber.id] = device;
           sabers.add(saber);
           debugPrint('Found saber: $name');
         }
@@ -175,8 +112,13 @@ class USBService {
       _updateStatus('Connecting to ${saber.name}...');
       debugPrint('Attempting connection to ${saber.name}');
 
+      UsbDevice? usbDevice = _usbDevices[saber.id];
+      if (usbDevice == null) {
+        throw SaberException('Device ${saber.id} not found, scan again');
+      }
+
       // Crea la porta USB
-      _port = await saber.usbDevice.create();
+      _port = await usbDevice.create();
       if (_port == null) {
         throw SaberException('Failed to create USB port');
       }
