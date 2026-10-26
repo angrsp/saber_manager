@@ -13,6 +13,16 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
+// Temporaneo: usb_serial compila con l'SDK 33, troppo vecchio per le sue dipendenze AndroidX.
+// Da togliere in A5 insieme a usb_serial.
+subprojects {
+    afterEvaluate { project ->
+        if (project.name == "usb_serial") {
+            project.android { compileSdkVersion 36 }
+        }
+    }
+}
+
 subprojects {
     project.evaluationDependsOn(":app")
 }
