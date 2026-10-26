@@ -22,7 +22,12 @@ Fonti: protocollo ufficiale `LamaDiLuce/polaris-opencore/Documentation/COMMS-PRO
 6. **Tipo di spada**: NXT se la versione inizia con `NXT_` (come py2saber e Tintallë); in aggiunta VID/PID dal servizio di stato del bridge.
 7. Timeout di lettura di py2saber: 3 s.
 
-Restano da confermare sulla NXT reale con la fase F0 del firmware (risultati in `piano-FW-bridge.md`, sezione 6): maiuscole/minuscole nelle risposte di `c?/f?/w?`, persistenza dopo `SAVE` senza VBUS, comportamento di `P=`.
+**Confermato dalla fase F0 del firmware** sulla NXT reale (2026-10-25, `../saber_bridge/piano-FW-bridge.md`, sezione 6):
+- `c?/f?/w?` rispondono in **minuscolo** (`c0=...`); `w?` risponde anche sulla NXT 1.1.0 (il limite "build ≥ 1.9.15" vale solo per la EVO).
+- `P=` risponde **`OK, P=...`**, con la virgola (diverso da `OK C0=...`); l'anteprima funziona anche senza VBUS.
+- `SAVE` rende persistenti i colori senza VBUS; risponde dopo **313 ms**, gli altri comandi entro 16 ms.
+- Il comando va terminato con il **solo LF**: con `\r\n` la spada non risponde.
+- Le risposte coincidono con l'emulatore del bridge (`main/nxt_emu.c`), riprodotto in `FakeSaber`.
 
 ## 2. Flusso di lavoro: gitflow
 
