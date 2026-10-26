@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:usb_serial/usb_serial.dart';
 
 // Modello dati per dispositivi saber
@@ -134,10 +134,10 @@ class USBService {
       List<UsbDevice> devices = await UsbSerial.listDevices();
       List<SaberDevice> sabers = [];
 
-      print('📱 Found ${devices.length} USB devices');
+      debugPrint('Found ${devices.length} USB devices');
       
       for (UsbDevice device in devices) {
-        print('🔍 Checking device: VID=${device.vid?.toRadixString(16)}, PID=${device.pid?.toRadixString(16)}');
+        debugPrint('Checking device: VID=${device.vid?.toRadixString(16)}, PID=${device.pid?.toRadixString(16)}');
         
         if (_isAnimaDevice(device)) {
           SaberType type = _getSaberType(device);
@@ -150,7 +150,7 @@ class USBService {
           );
           
           sabers.add(saber);
-          print('✅ Found saber: $name');
+          debugPrint('Found saber: $name');
         }
       }
 
@@ -158,7 +158,7 @@ class USBService {
         _updateStatus('No sabers found - connect your OpenCore lightsaber');
       } else {
         _updateStatus('Found ${sabers.length} saber(s)');
-        print('🎉 Found ${sabers.length} saber(s)!');
+        debugPrint('Found ${sabers.length} saber(s)!');
       }
 
       _devicesController.add(sabers);
@@ -173,7 +173,7 @@ class USBService {
   Future<SaberDevice?> connectToDevice(SaberDevice saber) async {
     try {
       _updateStatus('Connecting to ${saber.name}...');
-      print('🔌 Attempting connection to ${saber.name}');
+      debugPrint('Attempting connection to ${saber.name}');
 
       // Crea la porta USB
       _port = await saber.usbDevice.create();
@@ -198,10 +198,10 @@ class USBService {
         UsbPort.PARITY_NONE
       );
 
-      print('✅ USB port opened successfully');
+      debugPrint('USB port opened successfully');
 
       // Aspetta più tempo per la stabilizzazione
-      print('⏳ Waiting for connection stabilization...');
+      debugPrint('Waiting for connection stabilization...');
       await Future.delayed(connectionStabilizationDelay);
 
       // Tenta diversi metodi per verificare la connessione
@@ -222,11 +222,11 @@ class USBService {
       );
 
       _updateStatus('Connected to ${_connectedDevice!.name}');
-      print('🎉 Successfully connected to ${_connectedDevice!.name}');
+      debugPrint('Successfully connected to ${_connectedDevice!.name}');
       
       return _connectedDevice;
     } catch (e) {
-      print('❌ Connection failed: $e');
+      debugPrint('Connection failed: $e');
       await disconnect();
       throw SaberException('Connection failed: $e');
     }
@@ -243,53 +243,53 @@ class USBService {
       
       _connectedDevice = null;
       _updateStatus('Disconnected');
-      print('🔌 Disconnected from saber');
+      debugPrint('Disconnected from saber');
     } catch (e) {
-      print('❌ Error during disconnect: $e');
+      debugPrint('Error during disconnect: $e');
     }
   }
 
   // Verifica se la saber è pronta - metodi multipli
   Future<bool> _checkSaberReadyMultiple() async {
-    print('🔍 Testing saber communication...');
+    debugPrint('Testing saber communication...');
     
     // Metodo 1: Comando backslash (originale)
     if (await _testCommand('\\', ['OK, Write Ready', 'OK', 'Write Ready'])) {
-      print('✅ Saber responded to \\ command');
+      debugPrint('Saber responded to \\ command');
       return true;
     }
     
     // Metodo 2: Comando di versione
     if (await _testCommand('V?', ['V=', 'Version'])) {
-      print('✅ Saber responded to V? command');
+      debugPrint('Saber responded to V? command');
       return true;
     }
     
     // Metodo 3: Comando di help
     if (await _testCommand('?', ['Help', 'Commands', 'Available'])) {
-      print('✅ Saber responded to ? command');
+      debugPrint('Saber responded to ? command');
       return true;
     }
     
     // Metodo 4: Solo newline
     if (await _testCommand('', ['>', 'OK', 'Ready'])) {
-      print('✅ Saber responded to newline');
+      debugPrint('Saber responded to newline');
       return true;
     }
     
-    print('❌ Saber not responding to any test commands');
+    debugPrint('Saber not responding to any test commands');
     return false;
   }
 
   // Testa un comando specifico
   Future<bool> _testCommand(String command, List<String> expectedResponses) async {
     try {
-      print('📤 Testing command: "${command}"');
+      debugPrint('Testing command: "$command"');
       
       await _sendCommand(command);
       String response = await _readLine();
       
-      print('📥 Received: "$response"');
+      debugPrint('Received: "$response"');
       
       // Verifica se la risposta contiene una delle stringhe attese
       for (String expected in expectedResponses) {
@@ -300,7 +300,7 @@ class USBService {
       
       return false;
     } catch (e) {
-      print('❌ Test command failed: $e');
+      debugPrint('Test command failed: $e');
       return false;
     }
   }
@@ -313,7 +313,7 @@ class USBService {
       // Versione firmware
       await _sendCommand('V?');
       String versionResponse = await _readLine();
-      print('📡 Version response: $versionResponse');
+      debugPrint('Version response: $versionResponse');
       
       if (versionResponse.contains('V=')) {
         info['version'] = versionResponse.substring(versionResponse.indexOf('V=') + 2).trim();
@@ -325,7 +325,7 @@ class USBService {
       // Numero seriale
       await _sendCommand('S?');
       String serialResponse = await _readLine();
-      print('📡 Serial response: $serialResponse');
+      debugPrint('Serial response: $serialResponse');
       
       if (serialResponse.contains('S=')) {
         info['serial'] = serialResponse.substring(serialResponse.indexOf('S=') + 2).trim();
@@ -333,7 +333,7 @@ class USBService {
         info['serial'] = serialResponse.trim();
       }
     } catch (e) {
-      print('❌ Error getting saber info: $e');
+      debugPrint('Error getting saber info: $e');
       // Non è critico se non riusciamo a ottenere le info
     }
 
@@ -346,7 +346,7 @@ class USBService {
 
     String fullCommand = cmd.isEmpty ? '\n' : '$cmd\n';
     List<int> data = fullCommand.codeUnits;
-    print('📤 Sending: "${cmd}" (${data.length} bytes)');
+    debugPrint('Sending: "$cmd" (${data.length} bytes)');
 
     if (data.length <= chunkSize) {
       await _port!.write(Uint8List.fromList(data));
@@ -376,7 +376,7 @@ class USBService {
 
     timeout = Timer(readTimeout, () {
       if (!completer.isCompleted) {
-        print('⏰ Read timeout after ${readTimeout.inSeconds}s');
+        debugPrint('Read timeout after ${readTimeout.inSeconds}s');
         completer.completeError(ConnectionTimeoutException());
       }
     });
@@ -385,8 +385,8 @@ class USBService {
       String dataString = String.fromCharCodes(data);
       response += dataString;
       
-      print('📨 Raw data received: ${data.map((e) => e.toRadixString(16)).join(' ')}');
-      print('📨 String received: "$dataString"');
+      debugPrint('Raw data received: ${data.map((e) => e.toRadixString(16)).join(' ')}');
+      debugPrint('String received: "$dataString"');
       
       if (response.contains('\n') || response.contains('\r')) {
         timeout?.cancel();
@@ -398,7 +398,7 @@ class USBService {
           line = line.trim();
           if (line.isNotEmpty && !line.startsWith('#')) {
             if (!completer.isCompleted) {
-              print('📥 Cleaned response: "$line"');
+              debugPrint('Cleaned response: "$line"');
               completer.complete(line);
             }
             return;
@@ -408,7 +408,7 @@ class USBService {
         // Se non troviamo righe valide ma abbiamo dati, restituisci la risposta grezza
         if (!completer.isCompleted && response.trim().isNotEmpty) {
           String cleanResponse = response.trim().replaceAll(RegExp(r'[\r\n]'), '');
-          print('📥 Fallback response: "$cleanResponse"');
+          debugPrint('Fallback response: "$cleanResponse"');
           completer.complete(cleanResponse);
         }
       }
@@ -448,7 +448,7 @@ class USBService {
   }
 
   void _updateStatus(String status) {
-    print('📱 Status: $status');
+    debugPrint('Status: $status');
     _statusController.add(status);
   }
 
