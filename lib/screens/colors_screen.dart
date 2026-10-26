@@ -9,7 +9,7 @@ import '../services/saber_protocol.dart';
 import '../widgets/color_picker_card.dart';
 
 class ColorsScreen extends StatefulWidget {
-  const ColorsScreen({Key? key}) : super(key: key);
+  const ColorsScreen({super.key});
 
   @override
   State<ColorsScreen> createState() => _ColorsScreenState();

@@ -53,6 +53,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       if (connectedSaber != null) {
         appState.setConnectedSaber(connectedSaber);
         appState.setStatusMessage('Connected to ${connectedSaber.name}');
+        if (!mounted) return;
         Navigator.of(context).pop(); // Torna alla home
       } else {
         throw Exception('Failed to connect');

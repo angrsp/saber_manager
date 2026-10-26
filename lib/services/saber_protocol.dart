@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-import 'package:usb_serial/usb_serial.dart';
+import 'package:flutter/foundation.dart';
 import '../models/color_config.dart';  
 import 'usb_service.dart';
 
@@ -31,7 +30,7 @@ class SaberProtocolService {
       return response.startsWith('OK');
       
     } catch (e) {
-      print('Error previewing color: $e');
+      debugPrint('Error previewing color: $e');
       return false;
     }
   }
@@ -69,7 +68,7 @@ class SaberProtocolService {
       return false;
       
     } catch (e) {
-      print('Error setting color: $e');
+      debugPrint('Error setting color: $e');
       return false;
     }
   }
@@ -94,7 +93,7 @@ class SaberProtocolService {
       return false;
       
     } catch (e) {
-      print('Error setting active bank: $e');
+      debugPrint('Error setting active bank: $e');
       return false;
     }
   }
@@ -119,7 +118,7 @@ class SaberProtocolService {
       return success;
       
     } catch (e) {
-      print('Error saving color bank: $e');
+      debugPrint('Error saving color bank: $e');
       return false;
     }
   }
@@ -147,7 +146,7 @@ class SaberProtocolService {
       return success;
       
     } catch (e) {
-      print('Error saving all color banks: $e');
+      debugPrint('Error saving all color banks: $e');
       return false;
     }
   }
@@ -167,7 +166,7 @@ class SaberProtocolService {
       return ColorConfiguration();
       
     } catch (e) {
-      print('Error reading configuration: $e');
+      debugPrint('Error reading configuration: $e');
       return null;
     }
   }
@@ -187,7 +186,7 @@ class SaberProtocolService {
       return null;
       
     } catch (e) {
-      print('Error getting firmware version: $e');
+      debugPrint('Error getting firmware version: $e');
       return null;
     }
   }
@@ -207,7 +206,7 @@ class SaberProtocolService {
       return null;
       
     } catch (e) {
-      print('Error getting serial number: $e');
+      debugPrint('Error getting serial number: $e');
       return null;
     }
   }
@@ -226,7 +225,7 @@ class SaberProtocolService {
       return response.startsWith('OK');
       
     } catch (e) {
-      print('Error saving config: $e');
+      debugPrint('Error saving config: $e');
       return false;
     }
   }
@@ -240,7 +239,7 @@ class SaberProtocolService {
       return await _usbService!.readRawResponse();
       
     } catch (e) {
-      print('Error sending command: $e');
+      debugPrint('Error sending command: $e');
       return '';
     }
   }
@@ -324,7 +323,7 @@ extension SaberProtocolProgressExtension on SaberProtocolService {
       return success;
       
     } catch (e) {
-      print('Error in saveAllColorBanksWithProgress: $e');
+      debugPrint('Error in saveAllColorBanksWithProgress: $e');
       return false;
     }
   }
