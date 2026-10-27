@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../models/saber_device.dart';
-import '../services/usb_service.dart';
+import '../services/saber_connection_service.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -20,19 +20,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
   Future<void> _scanForSabers() async {
     AppState appState = Provider.of<AppState>(context, listen: false);
-    USBService usbService = Provider.of<USBService>(context, listen: false);
-    
-    appState.setScanning(true);
-    
-    try {
-      // Richiedi permessi prima
-      bool permissionsGranted = await usbService.requestPermissions();
-      if (!permissionsGranted) {
-        throw Exception('USB permissions denied');
-      }
+    SaberConnectionService connectionService = Provider.of<SaberConnectionService>(context, listen: false);
 
+    appState.setScanning(true);
+
+    try {
       // Scan per dispositivi
-      List<SaberDevice> sabers = await usbService.scanForSabers();
+      List<SaberDevice> sabers = await connectionService.scan();
       appState.setAvailableSabers(sabers);
       
     } catch (e) {
@@ -45,23 +39,19 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
   Future<void> _connectToSaber(SaberDevice saber) async {
     AppState appState = Provider.of<AppState>(context, listen: false);
-    USBService usbService = Provider.of<USBService>(context, listen: false);
-    
+    SaberConnectionService connectionService = Provider.of<SaberConnectionService>(context, listen: false);
+
     appState.setConnecting(true);
-    
+
     try {
-      SaberDevice? connectedSaber = await usbService.connectToDevice(saber);
-      if (connectedSaber != null) {
-        appState.setConnectedSaber(connectedSaber);
-        appState.setStatusMessage('Connected to ${connectedSaber.name}');
-        if (!mounted) return;
-        Navigator.of(context).pop(); // Torna alla home
-      } else {
-        throw Exception('Failed to connect');
-      }
+      SaberDevice connectedSaber = await connectionService.connect(saber);
+      appState.setConnectedSaber(connectedSaber);
+      appState.setStatusMessage('Connected to ${connectedSaber.name}');
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Torna alla home
     } catch (e) {
       appState.setStatusMessage('Connection error: $e');
-      _showErrorDialog('Connection failed: $e');
+      if (mounted) _showErrorDialog('Connection failed: $e');
     } finally {
       appState.setConnecting(false);
     }

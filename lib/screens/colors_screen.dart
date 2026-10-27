@@ -21,7 +21,11 @@ class _ColorsScreenState extends State<ColorsScreen> {
   ColorEffect _selectedEffect = ColorEffect.main;
   bool _isLoading = false;
   bool _hasUnsavedChanges = false;
-  
+  // Comandi di lettura a cui la spada non ha risposto: quei colori sono rimasti al default
+  List<String> _unread = [];
+  // Anteprima accesa da questa schermata, da spegnere all'uscita
+  bool _previewUsed = false;
+
   SaberProtocolService? _saberService;
 
   @override
@@ -35,7 +39,44 @@ class _ColorsScreenState extends State<ColorsScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Ottieni il servizio dalla dependency injection
-    _saberService = context.read<SaberProtocolService>();
+    if (_saberService == null) {
+      _saberService = context.read<SaberProtocolService>();
+      if (_saberService!.isConnected) {
+        // Prima del primo build: niente setState
+        _isLoading = true;
+        _loadConfiguration();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_previewUsed && (_saberService?.isConnected ?? false)) {
+      _saberService!.stopPreview();
+    }
+    super.dispose();
+  }
+
+  // Legge i colori dalla spada all'apertura
+  Future<void> _loadConfiguration() async {
+    final result = await _saberService!.readConfiguration();
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+      if (result != null) {
+        _config = result.configuration;
+        _originalConfig = ColorConfiguration.fromMap(_config.toMap());
+        _unread = result.unread;
+        _hasUnsavedChanges = false;
+      }
+    });
+
+    if (result == null) {
+      _showSnackBar('Failed to read colors from saber', isError: true);
+    } else if (!result.isComplete) {
+      _showSnackBar('Some colors could not be read (${_unread.join(', ')}): defaults shown', isError: true);
+    }
   }
 
   // ============ GESTIONE STATO ============
@@ -82,6 +123,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
     try {
       final success = await _saberService!.previewColor(_currentColor);
       if (success) {
+        _previewUsed = true;
         _showSnackBar('Color previewed on saber');
       } else {
         _showSnackBar('Failed to preview color', isError: true);
@@ -137,9 +179,13 @@ class _ColorsScreenState extends State<ColorsScreen> {
     }
 
     // Mostra dialog di conferma
+    final warning = _unread.isEmpty
+        ? ''
+        : '\n\nWarning: some colors could not be read from the saber (${_unread.join(', ')}) '
+            'and will be overwritten with the values shown here.';
     final confirmed = await _showConfirmDialog(
       'Save All Banks',
-      'This will save all 8 color banks to the saber. This may take several minutes. Continue?',
+      'This will save all 8 color banks to the saber.$warning\n\nContinue?',
     );
 
     if (!confirmed) return;
@@ -155,6 +201,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
       if (success) {
         setState(() {
           _hasUnsavedChanges = false;
+          _unread = [];
           _originalConfig = ColorConfiguration.fromMap(_config.toMap());
         });
         _showSnackBar('All banks saved to saber');

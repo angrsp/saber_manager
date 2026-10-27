@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'app_state.dart';
-import 'services/usb_service.dart';
+import 'services/saber_connection_service.dart';
+import 'services/saber_link.dart';
 import 'services/saber_protocol.dart';
+import 'transport/fake_transport.dart';
 import 'screens/home_screen.dart';
 import 'screens/colors_screen.dart';
 import 'screens/connection_screen.dart';
@@ -19,17 +21,19 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppState()),
-        Provider(create: (_) => USBService()),
-        // Aggiungiamo il SaberProtocolService come singleton
-        ProxyProvider2<AppState, USBService, SaberProtocolService>(
-          create: (_) => SaberProtocolService(),
-          update: (_, appState, usbService, saberProtocolService) {
-            // Aggiorna il servizio USB quando cambia la connessione
-            if (saberProtocolService != null) {
-              saberProtocolService.setUSBService(usbService);
-            }
-            return saberProtocolService ?? SaberProtocolService();
-          },
+        // Trasporto finto finché non c'è il BLE (A4)
+        Provider<SaberLink>(
+          create: (_) => SaberLink(FakeTransport(responseDelay: const Duration(milliseconds: 20), logLineEvery: 5)),
+          dispose: (_, link) => link.dispose(),
+        ),
+        Provider<SaberProtocolService>(
+          create: (context) => SaberProtocolService(context.read<SaberLink>()),
+        ),
+        Provider<SaberConnectionService>(
+          create: (context) => SaberConnectionService(
+            context.read<SaberLink>(),
+            context.read<SaberProtocolService>(),
+          ),
         ),
       ],
       child: MaterialApp(

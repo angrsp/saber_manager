@@ -187,7 +187,8 @@ class FakeTransport implements SaberTransport {
   Future<void> connect(String deviceId) async {
     if (_state == TransportState.connected) return;
     _setState(TransportState.connecting);
-    await Future<void>.delayed(Duration.zero);
+    // Un microtask e non un timer: nei widget test i timer scattano solo con pump
+    await Future<void>.value();
     _setState(TransportState.connected);
   }
 

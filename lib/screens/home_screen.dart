@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../models/saber_device.dart';
-import '../services/usb_service.dart';
+import '../services/saber_connection_service.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -78,7 +78,7 @@ class HomeScreen extends StatelessWidget {
                           ),
                           _buildInfoRow(
                             'Type:', 
-                            appState.connectedSaber!.type == SaberType.animaEVO ? 'Anima EVO' : 'Anima NXT',
+                            _typeName(appState.connectedSaber!.type),
                             Icons.category,
                           ),
                           if (appState.connectedSaber!.firmwareVersion != null)
@@ -257,9 +257,20 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _disconnectSaber(BuildContext context, AppState appState) {
-    final usbService = Provider.of<USBService>(context, listen: false);
-    usbService.disconnect();
+    final connectionService = Provider.of<SaberConnectionService>(context, listen: false);
+    connectionService.disconnect();
     appState.disconnect();
+  }
+
+  String _typeName(SaberType type) {
+    switch (type) {
+      case SaberType.animaEVO:
+        return 'Anima EVO';
+      case SaberType.animaNXT:
+        return 'Anima NXT';
+      case SaberType.unknown:
+        return 'Unknown';
+    }
   }
 
   void _showFeatureDialog(BuildContext context, String feature) {
