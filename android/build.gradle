@@ -13,11 +13,12 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
-// Temporaneo: usb_serial compila con l'SDK 33, troppo vecchio per le sue dipendenze AndroidX.
-// Da togliere in A5 insieme a usb_serial.
+// compileSdk 36 forzato per due plugin:
+// - usb_serial compila con l'SDK 33, troppo vecchio per le sue dipendenze AndroidX (da togliere in A5);
+// - reactive_ble_mobile 5.6.0 chiede l'SDK 37, che AGP 8.13 non trova (da togliere col passaggio ad AGP 9).
 subprojects {
     afterEvaluate { project ->
-        if (project.name == "usb_serial") {
+        if (project.name == "usb_serial" || project.name == "reactive_ble_mobile") {
             project.android { compileSdkVersion 36 }
         }
     }

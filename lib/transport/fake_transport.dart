@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
+import '../models/bridge_status.dart';
+import '../models/saber_device.dart';
 import '../models/saber_exceptions.dart';
+import 'bridge_scanner.dart';
 import 'saber_transport.dart';
 
 // Emulatore della Anima NXT, come main/nxt_emu.c del firmware del bridge
@@ -139,8 +142,10 @@ class FakeSaber {
 }
 
 // Trasporto finto: collega l'app a un FakeSaber, con le risposte spezzate in notifiche
-// come farebbe il bridge BLE.
-class FakeTransport implements SaberTransport {
+// e lo stato del bridge come farebbe il bridge BLE.
+class FakeTransport implements BridgeTransport {
+  static const String firmware = 'fake';
+
   FakeTransport({
     FakeSaber? saber,
     this.fragmentSize = 20,
@@ -165,11 +170,20 @@ class FakeTransport implements SaberTransport {
   // Comandi ricevuti, in ordine, senza terminatore
   final List<String> commands = [];
 
-  // false = bridge connesso ma spada non collegata
-  bool saberPresent = true;
+  // false = bridge connesso ma spada non collegata; il cambio arriva all'app come notifica di stato
+  bool get saberPresent => _saberPresent;
+  set saberPresent(bool present) {
+    if (_saberPresent == present) return;
+    _saberPresent = present;
+    _rx = '';
+    if (_state == TransportState.connected) _emitStatus();
+  }
+
+  bool _saberPresent = true;
 
   final StreamController<Uint8List> _dataController = StreamController<Uint8List>.broadcast();
   final StreamController<TransportState> _stateController = StreamController<TransportState>.broadcast();
+  final StreamController<BridgeStatus> _statusController = StreamController<BridgeStatus>.broadcast();
   TransportState _state = TransportState.disconnected;
   String _rx = '';
   int _logLines = 0;
@@ -184,18 +198,37 @@ class FakeTransport implements SaberTransport {
   TransportState get currentState => _state;
 
   @override
+  Stream<BridgeStatus> get bridgeStatus => _statusController.stream;
+
+  @override
+  BridgeStatus? get currentBridgeStatus => _state == TransportState.connected ? _status() : null;
+
+  @override
+  String? get bridgeFirmware => _state == TransportState.connected ? firmware : null;
+
+  // VID/PID della NXT
+  BridgeStatus _status() => _saberPresent
+      ? const BridgeStatus(saberConnected: true, vid: 0x0483, pid: 0x5740, batteryMv: 3900)
+      : const BridgeStatus(saberConnected: false, batteryMv: 3900);
+
+  void _emitStatus() {
+    if (!_statusController.isClosed) _statusController.add(_status());
+  }
+
+  @override
   Future<void> connect(String deviceId) async {
     if (_state == TransportState.connected) return;
     _setState(TransportState.connecting);
     // Un microtask e non un timer: nei widget test i timer scattano solo con pump
     await Future<void>.value();
     _setState(TransportState.connected);
+    _emitStatus();
   }
 
   @override
   Future<void> write(Uint8List data) async {
     if (_state != TransportState.connected) throw SaberDisconnectedException();
-    if (!saberPresent) throw SaberNotConnectedException();
+    if (!_saberPresent) throw SaberNotConnectedException();
 
     _rx += String.fromCharCodes(data);
     int end;
@@ -210,7 +243,7 @@ class FakeTransport implements SaberTransport {
       }
       if (response.isNotEmpty) {
         Future<void>.delayed(responseDelay, () {
-          if (_state == TransportState.connected) inject(response);
+          if (_state == TransportState.connected && _saberPresent) inject(response);
         });
       }
     }
@@ -235,6 +268,7 @@ class FakeTransport implements SaberTransport {
   void dispose() {
     _dataController.close();
     _stateController.close();
+    _statusController.close();
   }
 
   void _setState(TransportState state) {
@@ -242,5 +276,15 @@ class FakeTransport implements SaberTransport {
     _state = state;
     _rx = '';
     _stateController.add(state);
+  }
+}
+
+// Scanner finto: trova un solo bridge, quello del FakeTransport
+class FakeScanner implements BridgeScanner {
+  static const String deviceId = 'fake';
+
+  @override
+  Stream<List<SaberDevice>> scan({Duration duration = BridgeScanner.defaultDuration}) async* {
+    yield [SaberDevice(id: deviceId, name: 'SaberBridge (demo)', rssi: -50, type: SaberType.unknown)];
   }
 }

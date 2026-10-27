@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../app_state.dart';
+import '../models/bridge_status.dart';
 import '../models/saber_device.dart';
 import '../services/saber_connection_service.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
+  static const String notViaBle = 'Not available via BLE';
 
   @override
   Widget build(BuildContext context) {
@@ -15,8 +17,9 @@ class HomeScreen extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
       ),
-      body: Consumer<AppState>(
-        builder: (context, appState, child) {
+      body: Consumer<SaberConnectionService>(
+        builder: (context, service, child) {
+          final saber = service.saber;
           return Column(
             children: [
               // Status Card
@@ -31,8 +34,8 @@ class HomeScreen extends StatelessWidget {
                         Row(
                           children: [
                             Icon(
-                              appState.isConnected ? Icons.flash_on : Icons.flash_off,
-                              color: appState.isConnected ? Colors.green : Colors.grey,
+                              _statusIcon(service),
+                              color: _statusColor(service),
                               size: 32,
                             ),
                             const SizedBox(width: 16),
@@ -48,15 +51,15 @@ class HomeScreen extends StatelessWidget {
                                     ),
                                   ),
                                   Text(
-                                    appState.isConnected ? 'Connected' : 'Disconnected',
+                                    _statusTitle(service),
                                     style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
-                                      color: appState.isConnected ? Colors.green : Colors.red,
+                                      color: _statusColor(service),
                                     ),
                                   ),
                                   Text(
-                                    appState.statusMessage,
+                                    service.statusMessage,
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: Colors.grey[600],
@@ -67,30 +70,41 @@ class HomeScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        
-                        // Informazioni saber se connesso
-                        if (appState.isConnected && appState.connectedSaber != null) ...[
+
+                        // Informazioni su bridge e spada
+                        if (service.isBridgeConnected) ...[
                           const Divider(height: 32),
                           _buildInfoRow(
-                            'Device:', 
-                            appState.connectedSaber!.name,
-                            Icons.device_hub,
+                            'Bridge:',
+                            [
+                              service.bridge?.name ?? 'SaberBridge',
+                              if (service.bridgeFirmware != null) service.bridgeFirmware!,
+                            ].join(' '),
+                            Icons.bluetooth_connected,
                           ),
+                          if (_batteryText(service.bridgeStatus) != null)
+                            _buildInfoRow(
+                              'Battery:',
+                              _batteryText(service.bridgeStatus)!,
+                              service.bridgeStatus!.batteryLow ? Icons.battery_alert : Icons.battery_std,
+                            ),
+                        ],
+                        if (saber != null) ...[
                           _buildInfoRow(
-                            'Type:', 
-                            _typeName(appState.connectedSaber!.type),
+                            'Type:',
+                            _typeName(saber.type),
                             Icons.category,
                           ),
-                          if (appState.connectedSaber!.firmwareVersion != null)
+                          if (saber.firmwareVersion != null)
                             _buildInfoRow(
-                              'Firmware:', 
-                              appState.connectedSaber!.firmwareVersion!,
+                              'Firmware:',
+                              saber.firmwareVersion!,
                               Icons.memory,
                             ),
-                          if (appState.connectedSaber!.serialNumber != null)
+                          if (saber.serialNumber != null)
                             _buildInfoRow(
-                              'Serial:', 
-                              appState.connectedSaber!.serialNumber!,
+                              'Serial:',
+                              saber.serialNumber!,
                               Icons.tag,
                             ),
                         ],
@@ -99,7 +113,7 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              
+
               // Action Grid
               Expanded(
                 child: Padding(
@@ -111,52 +125,50 @@ class HomeScreen extends StatelessWidget {
                     children: [
                       _buildActionCard(
                         context,
-                        appState,
-                        title: appState.isConnected ? 'Disconnect' : 'Connect Saber',
-                        icon: appState.isConnected ? Icons.usb_off : Icons.usb,
-                        color: appState.isConnected ? Colors.orange : Colors.blue,
-                        onTap: () => _handleConnection(context, appState),
-                        enabled: !appState.isScanning && !appState.isConnecting,
+                        title: service.isBridgeConnected ? 'Disconnect' : 'Connect Saber',
+                        icon: service.isBridgeConnected ? Icons.bluetooth_disabled : Icons.bluetooth_searching,
+                        color: service.isBridgeConnected ? Colors.orange : Colors.blue,
+                        onTap: () => _handleConnection(context, service),
+                        enabled: service.phase != ConnectionPhase.connecting,
                       ),
+                      // File, suoni e firmware passano dal disco USB della spada: non via BLE
                       _buildActionCard(
                         context,
-                        appState,
                         title: 'Upload Files',
+                        subtitle: notViaBle,
                         icon: Icons.audiotrack,
                         color: Colors.green,
-                        enabled: appState.isConnected,
-                        onTap: () => _showFeatureDialog(context, 'Upload Files'),
+                        enabled: false,
+                        onTap: () {},
                       ),
                       _buildActionCard(
                         context,
-                        appState,
                         title: 'Manage Colors',
                         icon: Icons.palette,
                         color: Colors.purple,
-                        enabled: appState.isConnected,
+                        enabled: service.isConnected,
                         onTap: () => Navigator.pushNamed(context, '/colors'),
                       ),
                       _buildActionCard(
                         context,
-                        appState,
                         title: 'Sound Effects',
+                        subtitle: notViaBle,
                         icon: Icons.music_note,
                         color: Colors.indigo,
-                        enabled: appState.isConnected,
-                        onTap: () => _showFeatureDialog(context, 'Sound Effects'),
+                        enabled: false,
+                        onTap: () {},
                       ),
                       _buildActionCard(
                         context,
-                        appState,
                         title: 'Firmware Update',
+                        subtitle: notViaBle,
                         icon: Icons.system_update,
                         color: Colors.red,
-                        enabled: appState.isConnected,
-                        onTap: () => _showFeatureDialog(context, 'Firmware Update'),
+                        enabled: false,
+                        onTap: () {},
                       ),
                       _buildActionCard(
                         context,
-                        appState,
                         title: 'Settings',
                         icon: Icons.settings,
                         color: Colors.grey,
@@ -204,9 +216,9 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildActionCard(
-    BuildContext context,
-    AppState appState, {
+    BuildContext context, {
     required String title,
+    String? subtitle,
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
@@ -241,6 +253,14 @@ class HomeScreen extends StatelessWidget {
                   color: enabled ? Colors.black87 : Colors.grey,
                 ),
               ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                ),
+              ],
             ],
           ),
         ),
@@ -248,18 +268,46 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  void _handleConnection(BuildContext context, AppState appState) {
-    if (appState.isConnected) {
-      _disconnectSaber(context, appState);
+  void _handleConnection(BuildContext context, SaberConnectionService service) {
+    if (service.isBridgeConnected) {
+      service.disconnect();
     } else {
       Navigator.pushNamed(context, '/connection');
     }
   }
 
-  void _disconnectSaber(BuildContext context, AppState appState) {
-    final connectionService = Provider.of<SaberConnectionService>(context, listen: false);
-    connectionService.disconnect();
-    appState.disconnect();
+  static IconData _statusIcon(SaberConnectionService service) {
+    if (service.isConnected) return Icons.flash_on;
+    if (service.isBridgeConnected) return Icons.bluetooth_connected;
+    return Icons.flash_off;
+  }
+
+  static Color _statusColor(SaberConnectionService service) {
+    if (service.isConnected) return Colors.green;
+    if (service.isBridgeConnected) return Colors.orange;
+    return Colors.red;
+  }
+
+  static String _statusTitle(SaberConnectionService service) {
+    switch (service.phase) {
+      case ConnectionPhase.ready:
+        return 'Connected';
+      case ConnectionPhase.waitingForSaber:
+        return 'Saber not connected';
+      case ConnectionPhase.connecting:
+      case ConnectionPhase.handshaking:
+        return 'Connecting...';
+      case ConnectionPhase.idle:
+      case ConnectionPhase.scanning:
+        return 'Disconnected';
+    }
+  }
+
+  // Tensione della batteria del bridge; null se non misurata
+  static String? _batteryText(BridgeStatus? status) {
+    if (status == null || status.batteryMv == 0) return null;
+    final volts = (status.batteryMv / 1000).toStringAsFixed(2);
+    return status.batteryLow ? '$volts V (low)' : '$volts V';
   }
 
   String _typeName(SaberType type) {

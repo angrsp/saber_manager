@@ -4,7 +4,7 @@ import 'package:saber_manager/main.dart';
 
 void main() {
   testWidgets('L\'app si avvia sulla home, disconnessa', (WidgetTester tester) async {
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(const MyApp(fakeBridge: true));
 
     expect(find.text('Saber Manager'), findsOneWidget);
     expect(find.text('Disconnected'), findsOneWidget);

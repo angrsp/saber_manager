@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:saber_manager/screens/colors_screen.dart';
+import 'package:saber_manager/services/bluetooth_access.dart';
+import 'package:saber_manager/services/saber_connection_service.dart';
 import 'package:saber_manager/services/saber_link.dart';
 import 'package:saber_manager/services/saber_protocol.dart';
 import 'package:saber_manager/transport/fake_transport.dart';
@@ -13,15 +15,28 @@ void main() {
   Future<FakeTransport> pumpScreen(WidgetTester tester, {Set<String> muted = const {}}) async {
     final transport = FakeTransport()..mutedCommands.addAll(muted);
     final link = SaberLink(transport);
-    addTearDown(link.dispose);
-    await link.connect('fake');
+    final protocol = SaberProtocolService(link, timeout: const Duration(milliseconds: 100));
+    final connection = SaberConnectionService(
+      transport: transport,
+      link: link,
+      protocol: protocol,
+      scanner: FakeScanner(),
+      bluetooth: AlwaysReadyBluetooth(),
+    );
+    addTearDown(() {
+      connection.dispose();
+      link.dispose();
+    });
 
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
-      Provider<SaberProtocolService>(
-        create: (_) => SaberProtocolService(link, timeout: const Duration(milliseconds: 100)),
+      MultiProvider(
+        providers: [
+          Provider<SaberProtocolService>.value(value: protocol),
+          ChangeNotifierProvider<SaberConnectionService>.value(value: connection),
+        ],
         child: MaterialApp(
           home: Builder(
             builder: (context) => Scaffold(
@@ -34,6 +49,13 @@ void main() {
         ),
       ),
     );
+    // Connessione completa prima di aprire la schermata
+    await connection.scan();
+    await connection.connect(connection.devices.single);
+    await tester.pumpAndSettle();
+    expect(connection.isConnected, isTrue);
+    transport.commands.clear();
+
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
     return transport;
@@ -70,5 +92,16 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(transport.commands, isNot(contains('P=0')));
+  });
+
+  testWidgets('spada scollegata: torna indietro con un avviso', (tester) async {
+    final transport = await pumpScreen(tester);
+
+    transport.saberPresent = false;
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ColorsScreen), findsNothing);
+    expect(find.text('open'), findsOneWidget);
+    expect(find.text('Saber disconnected'), findsOneWidget);
   });
 }

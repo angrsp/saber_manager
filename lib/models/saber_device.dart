@@ -1,6 +1,6 @@
 // Modello dati per dispositivi saber, indipendente dal trasporto
 class SaberDevice {
-  // Identificativo del dispositivo: remoteId BLE (oggi deviceId USB)
+  // Identificativo del dispositivo: id BLE del bridge (MAC su Android)
   final String id;
   final String name;
   final int? rssi;

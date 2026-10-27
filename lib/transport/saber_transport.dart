@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import '../models/bridge_status.dart';
 
 enum TransportState {
   disconnected,
@@ -23,4 +24,16 @@ abstract class SaberTransport {
   Future<void> disconnect();
 
   void dispose();
+}
+
+// Trasporto attraverso il bridge BLE: oltre ai byte espone lo stato del bridge
+abstract class BridgeTransport implements SaberTransport {
+  // Aggiornamenti dalla caratteristica di stato (a ogni cambio e a ogni lettura)
+  Stream<BridgeStatus> get bridgeStatus;
+
+  // Ultimo stato noto; null se il bridge non ha il servizio di stato o non è connesso
+  BridgeStatus? get currentBridgeStatus;
+
+  // Versione firmware del bridge dal DIS (0x2A26), se letta
+  String? get bridgeFirmware;
 }

@@ -147,7 +147,7 @@ Si può dividere in due rami: `feature/saber-link` (trasporto, link, test) e poi
 Uscita: l'app funziona con il trasporto finto, la UI dei colori legge e scrive, test verdi.
 
 ### A4 – Trasporto BLE (`feature/ble-transport`)
-- `flutter pub add flutter_blue_plus`; controllare la versione installata, **la licenza** (è cambiata nelle versioni recenti) e il `minSdk` richiesto.
+- ~~`flutter pub add flutter_blue_plus`~~. **Fatto con `flutter_reactive_ble` 5.6.0** (BSD-3, `minSdk` 21): `flutter_blue_plus` 2.x ha una licenza propria, gratuita solo per uso personale, no-profit o educativo (licenza a pagamento per qualunque uso commerciale), e manda una telemetria durante la build; l'ultima versione BSD (1.35.x) è ferma dal 09/2025. Con `flutter_reactive_ble` i codici ATT (`0x80`/`0x81`) si leggono dal messaggio d'errore di RxAndroidBle (`status 128`): da verificare in A6. Il plugin chiede `compileSdk 37` (forzato a 36 finché c'è AGP 8.13) e Kotlin ≥ 2.4.
 - `lib/transport/ble_transport.dart`: connessione, `requestMtu(247)` e priorità di connessione alta su Android, `discoverServices`, ricerca del NUS e del servizio di stato, notifiche su TX, scrittura **con risposta** su RX a pezzi da (MTU − 3), listener sullo stato di connessione che chiude le sottoscrizioni. Errore ATT `0x80` → `SaberNotConnectedException`; `0x81` → nuovo tentativo dopo una breve pausa (contratto: `piano-FW-bridge.md`, 3.2).
 - Lettura e notifiche della caratteristica di stato → `Stream<BridgeStatus>` (spada collegata, VID/PID, batteria in mV, byte persi); byte oltre l'ottavo ignorati (`piano-FW-bridge.md`, 3.3). Lettura del DIS per la versione del bridge.
 - Scansione in una classe a parte, filtrata per UUID del NUS, 10 s.

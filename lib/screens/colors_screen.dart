@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:async';
 import 'package:path_provider/path_provider.dart';
 import '../models/color_config.dart';
+import '../services/saber_connection_service.dart';
 import '../services/saber_protocol.dart';
 import '../widgets/color_picker_card.dart';
 
@@ -27,6 +28,8 @@ class _ColorsScreenState extends State<ColorsScreen> {
   bool _previewUsed = false;
 
   SaberProtocolService? _saberService;
+  SaberConnectionService? _connection;
+  bool _leaving = false;
 
   @override
   void initState() {
@@ -41,6 +44,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
     // Ottieni il servizio dalla dependency injection
     if (_saberService == null) {
       _saberService = context.read<SaberProtocolService>();
+      _connection = context.read<SaberConnectionService>()..addListener(_onConnectionChanged);
       if (_saberService!.isConnected) {
         // Prima del primo build: niente setState
         _isLoading = true;
@@ -51,10 +55,23 @@ class _ColorsScreenState extends State<ColorsScreen> {
 
   @override
   void dispose() {
-    if (_previewUsed && (_saberService?.isConnected ?? false)) {
+    _connection?.removeListener(_onConnectionChanged);
+    if (_previewUsed && (_connection?.isConnected ?? false)) {
       _saberService!.stopPreview();
     }
     super.dispose();
+  }
+
+  // Spada scollegata o bridge perso: si torna alla home, che mostra lo stato
+  void _onConnectionChanged() {
+    final connection = _connection!;
+    if (connection.isConnected || _leaving || !mounted) return;
+    _leaving = true;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(
+      content: Text(connection.isBridgeConnected ? 'Saber disconnected' : 'Bridge connection lost'),
+    ));
   }
 
   // Legge i colori dalla spada all'apertura
