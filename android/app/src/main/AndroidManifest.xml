@@ -1,6 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.sabermanager.app">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- BLE verso il bridge. Da Android 12: SCAN (senza localizzazione) e CONNECT -->
     <uses-permission
@@ -12,17 +11,17 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <!-- flutter_reactive_ble dichiara la localizzazione senza limite di versione: qui la si ferma ad Android 11 -->
+    <uses-permission-sdk-23
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30"
+        tools:node="replace" />
+    <uses-permission-sdk-23
+        android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="30"
+        tools:node="replace" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
-    <!-- USB permissions for saber communication -->
-    <uses-permission android:name="android.permission.USB_PERMISSION" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    
-    <!-- USB host feature required for USB OTG -->
-    <uses-feature 
-        android:name="android.hardware.usb.host" 
-        android:required="false" />
-    
     <application
         android:label="Saber Manager"
         android:name="${applicationName}"
@@ -45,16 +44,6 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            
-            <!-- USB device filter for OpenCore devices -->
-            <intent-filter>
-                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
-            </intent-filter>
-            
-            <!-- USB device metadata -->
-            <meta-data
-                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
-                android:resource="@xml/device_filter" />
         </activity>
         
         <meta-data

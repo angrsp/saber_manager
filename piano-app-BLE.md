@@ -161,7 +161,8 @@ Uscita: l'app funziona con il trasporto finto, la UI dei colori legge e scrive, 
 ### A5 – Eliminazione dell'USB (`feature/remove-usb`)
 - Eliminare `lib/services/usb_service.dart`, la dipendenza `usb_serial`, `android/app/src/main/res/xml/device_filter.xml`.
 - Dal manifest: `USB_PERMISSION`, `uses-feature android.hardware.usb.host`, l'`intent-filter` `USB_DEVICE_ATTACHED` con il suo `meta-data`, `VIBRATE`, l'attributo `package=`.
-- Togliere `path_provider` se resta inutilizzato.
+- Togliere `path_provider` se resta inutilizzato. **Resta**: la schermata colori salva e carica i colori su file.
+- Aggiunto: la localizzazione dichiarata da `flutter_reactive_ble` (`uses-permission-sdk-23`, senza limite) è fermata ad Android 11 con `tools:node="replace"`.
 - Uscita: nessun riferimento all'USB in `lib/` e nel manifest; build e test verdi.
 
 ### A6 – Prove su hardware (`feature/hw-tuning` per le correzioni)
