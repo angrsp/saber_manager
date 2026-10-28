@@ -175,6 +175,7 @@ Uscita: l'app funziona con il trasporto finto, la UI dei colori legge e scrive, 
 - Pairing con bonding quando il firmware ha la fase F9: dialog di pairing Android, gestione del bond perso o rifiutato.
 - README (oggi vuoto), i due `.docx` in `docs/`, valutare la rimozione di `linux/`, `macos/`, `windows/`, `web/`.
 - iOS facoltativo: `NSBluetoothAlwaysUsageDescription` in `ios/Runner/Info.plist`.
+- **Pulizia fatta** (`feature/cleanup`): README scritto; i due `.docx` (nella radice, non in `docs/`) eliminati perché superati da README e piano (architettura USB, roadmap a sprint); `linux/`, `macos/`, `windows/`, `web/` eliminati (`flutter_reactive_ble` supporta solo Android e iOS); `NSBluetoothAlwaysUsageDescription` aggiunta; `.gitignore` sostituito con quello di `flutter create` (il vecchio era quello del repository di Flutter ed escludeva `*.lock`), quindi `pubspec.lock` ora è versionato.
 - Uscita: **`release/0.2.0`**.
 
 ## 4. Prova manuale prima di ogni rilascio
