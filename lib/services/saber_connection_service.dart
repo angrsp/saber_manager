@@ -96,15 +96,18 @@ class SaberConnectionService extends ChangeNotifier {
   Future<void> scan({Duration duration = BridgeScanner.defaultDuration}) async {
     if (_phase != ConnectionPhase.idle) return;
     _error = null;
+    _devices = const [];
+    // Già in scanning durante la richiesta dei permessi: sotto la finestra di Android si vede "Scanning"
+    _setPhase(ConnectionPhase.scanning);
     _readiness = await _bluetooth.ensureReady();
+    // Fermata (stopScan) mentre si aspettavano i permessi
+    if (_phase != ConnectionPhase.scanning) return;
     if (_readiness != BluetoothReadiness.ready) {
       _error = _readinessMessage(_readiness!);
-      _notify();
+      _setPhase(ConnectionPhase.idle);
       return;
     }
 
-    _devices = const [];
-    _setPhase(ConnectionPhase.scanning);
     final done = Completer<void>();
     _scanSubscription = _scanner.scan(duration: duration).listen(
       (devices) {

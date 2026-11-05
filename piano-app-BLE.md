@@ -1,7 +1,7 @@
 # Piano di sviluppo: app Saber Manager su BLE
 
 Ultimo aggiornamento: 2026-10-25.
-File collegati: `saber_manager-note-app-BLE.md` (analisi del codice di `dev`), `ESP32-bridge-note.md`, `piano-FW-bridge.md` (piano del firmware e **contratto BLE**, sezione 3: questo piano lo richiama senza ripeterlo).
+File collegati (nella cartella superiore): `../saber_manager-note-app-BLE.md` (analisi del codice di `dev`), `../ESP32-bridge-note.md`, `../saber_bridge/piano-FW-bridge.md` (piano del firmware e **contratto BLE**, sezione 3: questo piano lo richiama senza ripeterlo).
 
 ## 1. Punto di partenza
 
@@ -170,6 +170,18 @@ Uscita: l'app funziona con il trasporto finto, la UI dei colori legge e scrive, 
 2. Con il bridge reale e la NXT (fase F6): lettura dei colori reali, scrittura + `SAVE`, verifica dopo lo spegnimento della spada, anteprima, spada spenta e riaccesa durante l'uso.
 3. Correzioni di tempi, messaggi e casi limite emersi.
 - Uscita: prova manuale completa (sezione 4) superata → **`release/0.1.0`**.
+
+**Punto 1 fatto (2026-11-05)**: Galaxy S25 (Android 17) e XIAO in variante fake; `unplug`/`plug` dalla console della XIAO, perdita del bridge col tasto RESET.
+- Funziona: permessi e scansione (−30 dBm), connessione con MTU 247, stato (VID/PID della NXT, batteria a 0 mV nascosta), DIS, handshake e info; lettura di bank e 24 colori; anteprima; "Save Bank" (3 colori + `B=` + un `SAVE`, 0,24 s) e "Save All" (26 comandi, un `SAVE`, 1,3 s); spada scollegata e ricollegata (handshake automatico); bridge perso (timeout di supervisione, circa 5 s → "Bridge connection lost").
+- **`0x80` confermato su Android**: scollegando la spada a metà di "Save All", l'errore di RxAndroidBle viene riconosciuto come `SaberNotConnectedException`.
+- Tempi: intervallo di connessione 30 ms (il massimo chiesto dal bridge), richiesta/risposta 40–90 ms.
+- Correzioni (`feature/hw-tuning`):
+  - tolta `requestConnectionPriority`: `flutter_reactive_ble` tiene ferma la coda GATT per 2 s dopo la richiesta, e l'intervallo lo chiede già il bridge (connessione da 3,3 a 1,8 s);
+  - nuovo tentativo automatico di connessione dopo 500 ms se Android la rifiuta prima di aprirla (`GATT_ERROR` 133, visto al primo tentativo dopo un riavvio del bridge; non si è ripresentato nella prova del nuovo tentativo);
+  - schermata colori: spada scollegata con la finestra di "Save All" aperta (chiudeva la finestra invece della schermata, con il rischio di chiudere anche la home; avviso sbagliato), ritorno in cima dopo ogni comando, `setState` dopo l'uscita;
+  - "Scanning" invece di "No SaberBridge found" durante la richiesta dei permessi.
+- Non verificati: `0x81` (con comandi corti il buffer non si riempie: da provare con F7), richiesta di accensione del Bluetooth, Android ≤ 11.
+- Per il firmware: il DIS riporta la versione `0.0.0`; va impostata prima di `v0.1.0`.
 
 ### A7 – Pairing e pulizia (`feature/ble-pairing`, `feature/cleanup`)
 - Pairing con bonding quando il firmware ha la fase F9: dialog di pairing Android, gestione del bond perso o rifiutato.

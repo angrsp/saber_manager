@@ -20,6 +20,9 @@ class _ColorsScreenState extends State<ColorsScreen> {
   late ColorConfiguration _config;
   late ColorConfiguration _originalConfig; // Per il reset
   ColorEffect _selectedEffect = ColorEffect.main;
+  // Lettura iniziale dei colori: al posto del contenuto c'è l'indicatore
+  bool _isReading = false;
+  // Comando in corso (anteprima, salvataggio): il contenuto resta, con la barra di avanzamento
   bool _isLoading = false;
   bool _hasUnsavedChanges = false;
   // Comandi di lettura a cui la spada non ha risposto: quei colori sono rimasti al default
@@ -47,7 +50,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
       _connection = context.read<SaberConnectionService>()..addListener(_onConnectionChanged);
       if (_saberService!.isConnected) {
         // Prima del primo build: niente setState
-        _isLoading = true;
+        _isReading = true;
         _loadConfiguration();
       }
     }
@@ -62,13 +65,17 @@ class _ColorsScreenState extends State<ColorsScreen> {
     super.dispose();
   }
 
-  // Spada scollegata o bridge perso: si torna alla home, che mostra lo stato
+  // Spada scollegata o bridge perso: si torna alla home, che mostra lo stato. Prima si chiudono
+  // le finestre aperte sopra questa schermata (avanzamento del salvataggio, conferme).
   void _onConnectionChanged() {
     final connection = _connection!;
     if (connection.isConnected || _leaving || !mounted) return;
     _leaving = true;
     final messenger = ScaffoldMessenger.of(context);
-    Navigator.of(context).pop();
+    final navigator = Navigator.of(context);
+    final route = ModalRoute.of(context);
+    navigator.popUntil((r) => r == route);
+    navigator.pop();
     messenger.showSnackBar(SnackBar(
       content: Text(connection.isBridgeConnected ? 'Saber disconnected' : 'Bridge connection lost'),
     ));
@@ -80,7 +87,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
     if (!mounted) return;
 
     setState(() {
-      _isLoading = false;
+      _isReading = false;
       if (result != null) {
         _config = result.configuration;
         _originalConfig = ColorConfiguration.fromMap(_config.toMap());
@@ -133,9 +140,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    _setLoading(true);
 
     try {
       final success = await _saberService!.previewColor(_currentColor);
@@ -148,9 +153,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
     } catch (e) {
       _showSnackBar('Error: $e', isError: true);
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      _setLoading(false);
     }
   }
 
@@ -160,9 +163,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    _setLoading(true);
 
     try {
       final success = await _saberService!.saveColorBank(
@@ -170,7 +171,8 @@ class _ColorsScreenState extends State<ColorsScreen> {
         _currentBank,
         setActive: true,
       );
-      
+      if (!mounted) return;
+
       if (success) {
         setState(() {
           _hasUnsavedChanges = false;
@@ -183,9 +185,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
     } catch (e) {
       _showSnackBar('Error: $e', isError: true);
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      _setLoading(false);
     }
   }
 
@@ -205,16 +205,15 @@ class _ColorsScreenState extends State<ColorsScreen> {
       'This will save all 8 color banks to the saber.$warning\n\nContinue?',
     );
 
-    if (!confirmed) return;
+    if (!confirmed || !mounted) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    _setLoading(true);
 
     try {
       // Mostra progress dialog
       final success = await _showProgressDialog();
-      
+      if (!mounted) return;
+
       if (success) {
         setState(() {
           _hasUnsavedChanges = false;
@@ -228,9 +227,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
     } catch (e) {
       _showSnackBar('Error: $e', isError: true);
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      _setLoading(false);
     }
   }
 
@@ -269,7 +266,14 @@ class _ColorsScreenState extends State<ColorsScreen> {
 
   // ============ UI HELPERS ============
   
+  // Comando in corso: si aggiorna solo se la schermata c'è ancora (la spada può essersi scollegata nel frattempo)
+  void _setLoading(bool value) {
+    if (mounted) setState(() => _isLoading = value);
+  }
+
   void _showSnackBar(String message, {bool isError = false}) {
+    // Uscendo per una disconnessione resta solo l'avviso di _onConnectionChanged
+    if (!mounted || _leaving) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -308,7 +312,9 @@ class _ColorsScreenState extends State<ColorsScreen> {
       barrierDismissible: false,
       builder: (context) => _ProgressDialog(
         onComplete: (success) {
-          Navigator.of(context).pop();
+          // Se la spada si è scollegata la finestra l'ha già chiusa _onConnectionChanged: un altro pop
+          // (anche durante l'animazione di chiusura, quando è ancora montata) chiuderebbe la home
+          if (!_leaving && context.mounted) Navigator.of(context).pop();
           completer.complete(success);
         },
         config: _config,
@@ -326,6 +332,12 @@ class _ColorsScreenState extends State<ColorsScreen> {
         title: const Text('Color Management'),
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
+        bottom: _isLoading
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(4),
+                child: LinearProgressIndicator(),
+              )
+            : null,
         actions: [
           if (_hasUnsavedChanges)
             IconButton(
@@ -370,7 +382,7 @@ class _ColorsScreenState extends State<ColorsScreen> {
         ],
       ),
       
-      body: _isLoading
+      body: _isReading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
@@ -530,6 +542,7 @@ class _ProgressDialogState extends State<_ProgressDialog> {
       final success = await widget.saberService.saveAllColorBanksWithProgress(
         widget.config,
         (progress) {
+          if (!mounted) return;
           setState(() {
             _progress = progress;
           });

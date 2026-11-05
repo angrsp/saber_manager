@@ -12,8 +12,12 @@ import 'package:saber_manager/transport/fake_transport.dart';
 void main() {
   // Trasporto e link vanno creati dentro il test, nella zona a tempo simulato di testWidgets:
   // creati in setUp, le loro risposte passerebbero per il tempo reale, fermo durante pump.
-  Future<FakeTransport> pumpScreen(WidgetTester tester, {Set<String> muted = const {}}) async {
-    final transport = FakeTransport()..mutedCommands.addAll(muted);
+  Future<FakeTransport> pumpScreen(
+    WidgetTester tester, {
+    Set<String> muted = const {},
+    Duration responseDelay = Duration.zero,
+  }) async {
+    final transport = FakeTransport(responseDelay: responseDelay)..mutedCommands.addAll(muted);
     final link = SaberLink(transport);
     final protocol = SaberProtocolService(link, timeout: const Duration(milliseconds: 100));
     final connection = SaberConnectionService(
@@ -52,7 +56,10 @@ void main() {
     // Connessione completa prima di aprire la schermata
     await connection.scan();
     await connection.connect(connection.devices.single);
-    await tester.pumpAndSettle();
+    // Con le risposte in ritardo l'handshake avanza solo col tempo simulato
+    for (var i = 0; i < 100 && !connection.isConnected; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
     expect(connection.isConnected, isTrue);
     transport.commands.clear();
 
@@ -103,5 +110,40 @@ void main() {
     expect(find.byType(ColorsScreen), findsNothing);
     expect(find.text('open'), findsOneWidget);
     expect(find.text('Saber disconnected'), findsOneWidget);
+  });
+
+  testWidgets('comando in corso: il contenuto resta, con la barra di avanzamento', (tester) async {
+    await pumpScreen(tester, responseDelay: const Duration(milliseconds: 50));
+
+    await tester.tap(find.text('Preview'));
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.text('Actions'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+
+    // P=0 all'uscita, da completare prima della fine del test
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('spada scollegata durante "Save All": chiude la finestra e torna indietro', (tester) async {
+    final transport = await pumpScreen(tester, responseDelay: const Duration(milliseconds: 20));
+
+    await tester.tap(find.text('Save All'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Saving Colors to Saber'), findsOneWidget);
+
+    transport.saberPresent = false;
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ColorsScreen), findsNothing);
+    expect(find.text('Saving Colors to Saber'), findsNothing);
+    expect(find.text('open'), findsOneWidget);
+    expect(find.text('Saber disconnected'), findsOneWidget);
+    expect(find.text('Failed to save all banks'), findsNothing);
   });
 }

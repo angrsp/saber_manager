@@ -20,6 +20,17 @@ class _FixedBluetooth implements BluetoothAccess {
   Future<void> openSettings() async {}
 }
 
+// Richiesta dei permessi ancora aperta finché il test non completa [answer]
+class _PendingBluetooth implements BluetoothAccess {
+  final answer = Completer<BluetoothReadiness>();
+
+  @override
+  Future<BluetoothReadiness> ensureReady() => answer.future;
+
+  @override
+  Future<void> openSettings() async {}
+}
+
 void main() {
   late FakeTransport transport;
   late SaberLink link;
@@ -82,6 +93,24 @@ void main() {
     expect(service.devices, isEmpty);
     expect(service.readiness, BluetoothReadiness.poweredOff);
     expect(service.error, contains('Turn on Bluetooth'));
+    expect(service.phase, ConnectionPhase.idle);
+  });
+
+  test('richiesta dei permessi: già in scanning; fermata in quel momento, nessuna scansione', () async {
+    final bluetooth = _PendingBluetooth();
+    service.dispose();
+    service = build(bluetooth: bluetooth);
+
+    final scan = service.scan();
+    expect(service.phase, ConnectionPhase.scanning);
+
+    await service.stopScan();
+    expect(service.phase, ConnectionPhase.idle);
+    bluetooth.answer.complete(BluetoothReadiness.ready);
+    await scan;
+
+    expect(service.phase, ConnectionPhase.idle);
+    expect(service.devices, isEmpty);
   });
 
   test('spada presente: handshake e info subito', () async {

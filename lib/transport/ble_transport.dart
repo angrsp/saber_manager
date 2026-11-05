@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
@@ -16,6 +15,10 @@ class BleTransport implements BridgeTransport {
 
   static const int preferredMtu = 247;
   static const Duration connectionTimeout = Duration(seconds: 10);
+  // Dopo una connessione caduta (per esempio bridge riavviato) Android rifiuta spesso il primo
+  // tentativo con GATT_ERROR (133); il secondo riesce
+  static const int connectAttempts = 2;
+  static const Duration connectRetryPause = Duration(milliseconds: 500);
 
   // Errori ATT applicativi della write su RX
   static const int attSaberNotConnected = 0x80;
@@ -64,6 +67,19 @@ class BleTransport implements BridgeTransport {
 
   @override
   Future<void> connect(String deviceId) async {
+    for (var attempt = 1;; attempt++) {
+      try {
+        await _connectOnce(deviceId);
+        return;
+      } on _ConnectionRefused {
+        if (attempt >= connectAttempts) rethrow;
+        debugPrint('BLE $deviceId: connessione rifiutata, nuovo tentativo');
+        await Future<void>.delayed(connectRetryPause);
+      }
+    }
+  }
+
+  Future<void> _connectOnce(String deviceId) async {
     if (_state != TransportState.disconnected) await disconnect();
     _deviceId = deviceId;
     _setState(TransportState.connecting);
@@ -79,7 +95,7 @@ class BleTransport implements BridgeTransport {
             if (!connected.isCompleted) connected.complete();
           case DeviceConnectionState.disconnected:
             if (!connected.isCompleted) {
-              connected.completeError(SaberException('Bridge connection failed'));
+              connected.completeError(_ConnectionRefused());
             } else {
               _onLinkLost();
             }
@@ -116,13 +132,8 @@ class BleTransport implements BridgeTransport {
     } catch (e) {
       debugPrint('BLE: requestMtu fallita ($e), resta $_mtu');
     }
-    if (Platform.isAndroid) {
-      try {
-        await _ble.requestConnectionPriority(deviceId: deviceId, priority: ConnectionPriority.highPerformance);
-      } catch (e) {
-        debugPrint('BLE: priorità di connessione non impostata ($e)');
-      }
-    }
+    // Niente requestConnectionPriority: l'intervallo di 15–30 ms lo chiede già il bridge, e su Android
+    // flutter_reactive_ble tiene occupata la coda GATT per 2 s dopo la richiesta (connessione più lenta).
 
     await _ble.discoverAllServices(deviceId);
     final services = await _ble.getDiscoveredServices(deviceId);
@@ -259,4 +270,9 @@ class BleTransport implements BridgeTransport {
     _state = state;
     if (!_stateController.isClosed) _stateController.add(state);
   }
+}
+
+// Connessione chiusa dal sistema prima di aprirsi (non un timeout): vale la pena riprovare
+class _ConnectionRefused extends SaberException {
+  _ConnectionRefused() : super('Bridge connection failed');
 }
