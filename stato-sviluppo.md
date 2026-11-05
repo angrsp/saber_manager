@@ -1,6 +1,6 @@
 # Saber Manager: stato dello sviluppo
 
-Aggiornato al 2026-11-01. Ramo `dev` a `0ea9837`, allineato a `origin/dev`.
+Aggiornato al 2026-11-05. Ramo `dev`; ultimo commit di codice `25d6808` (A6, prima parte).
 Piano di riferimento: [`piano-app-BLE.md`](piano-app-BLE.md).
 
 ## In breve
@@ -13,16 +13,17 @@ L'app è passata dall'USB al BLE, attraverso il SaberBridge.
 | A1 | Base: toolchain, gitflow, pulizia | ✅ |
 | A2 | Estrazione dei modelli | ✅ |
 | A3 | `SaberLink`, trasporto finto, correzioni del protocollo | ✅ |
-| A4 | Trasporto BLE e nuove schermate | ✅ (manca la prova sul bridge vero) |
+| A4 | Trasporto BLE e nuove schermate | ✅ provato con la XIAO |
 | A5 | Eliminazione dell'USB | ✅ |
-| A6 | Prove su hardware | ⏳ in attesa della XIAO |
+| A6 | Prove su hardware: XIAO fake ✅ · NXT vera ⏳ in attesa di OTG e LiPo | metà |
 | A7 | Pulizia ✅ · pairing ⏳ in attesa della fase F9 del firmware | metà |
 
 Lo stato attuale:
 - `flutter analyze` non trova problemi;
-- passano 78 test;
+- passano 81 test;
 - l'APK di debug si compila;
-- sull'emulatore l'app funziona, sia con il BLE (permessi e scansione) sia con il bridge finto (`--dart-define=FAKE_BRIDGE=true`).
+- su un telefono vero (Galaxy S25, Android 17) l'app funziona via BLE con la XIAO in variante fake: connessione, info, colori, disconnessioni;
+- con `--dart-define=FAKE_BRIDGE=true` funziona anche senza bridge, sull'emulatore.
 
 ## Sviluppi fatti
 
@@ -82,23 +83,43 @@ Lo stato attuale:
 - Aggiunto il permesso Bluetooth per iOS.
 - `.gitignore` sostituito con quello standard di un'app Flutter; `pubspec.lock` ora è versionato.
 
+### A6 – Prove con la XIAO in variante fake (`25d6808`)
+Galaxy S25 con Android 17. La spada scollegata e ricollegata si simula con `unplug` e `plug` dalla console della XIAO; il bridge perso con il tasto RESET.
+
+**Funziona**:
+- permessi e scansione: il bridge compare con nome e segnale;
+- connessione con MTU 247, stato del bridge, versione del firmware, handshake e info;
+- colori:
+  - lettura di bank attivo e 24 colori;
+  - anteprima;
+  - "Save Bank": 3 colori, `B=` e un solo `SAVE`, in 0,24 s;
+  - "Save All": 26 comandi, un solo `SAVE`, in 1,3 s;
+- spada scollegata durante l'uso: torna alla home con il bridge connesso; quando si ricollega l'handshake riparte da solo;
+- bridge perso: torna alla home con "Bridge connection lost" (dopo circa 5 s).
+
+**`0x80` confermato su Android**: scollegando la spada a metà di "Save All", l'errore viene riconosciuto come "spada non collegata".
+
+**Corretto**:
+- connessione da 3,3 a 1,8 s: tolta la richiesta di priorità, che in `flutter_reactive_ble` blocca le operazioni Bluetooth per 2 s (l'intervallo di connessione lo chiede già il bridge);
+- nuovo tentativo automatico se Android rifiuta la connessione prima di aprirla (errore 133, visto una volta dopo un riavvio del bridge);
+- schermata colori:
+  - spada scollegata con la finestra di "Save All" aperta: rischio di chiudere anche la home e avviso sbagliato;
+  - la pagina tornava in cima dopo ogni comando;
+- durante la richiesta dei permessi compariva "No SaberBridge found" invece di "Scanning".
+
 ## Prossimi passi
 
-### 1. A6 – Prove su hardware
-**Prima parte**, appena arriva la XIAO con il firmware del bridge in variante fake (fase F5), senza spada:
-- scansione, connessione, stato del bridge, handshake, lettura e scrittura dei colori, disconnessioni;
-- **da verificare in particolare**:
-  - che i codici ATT `0x80`/`0x81` si leggano davvero dal messaggio d'errore Android (`status 128`);
-  - l'MTU negoziato e la scrittura a pezzi;
-  - la cadenza delle notifiche di stato;
-  - la richiesta di accensione del Bluetooth.
+### 1. A6 – Seconda parte, con la NXT vera
+Quando arrivano OTG e LiPo (fasi F6–F7 del bridge):
+- colori reali, scrittura + `SAVE`, verifica dopo lo spegnimento della spada, anteprima, spada spenta e riaccesa durante l'uso;
+- **`0x81`** (buffer pieno): con comandi così corti non si riesce a provocarlo, va provato con le prove di F7 (4 KB scritti di fila);
+- il nuovo tentativo dopo l'errore 133: non si è ripresentato nelle prove, quindi non è ancora verificato.
 
-**Seconda parte**, con OTG, LiPo e la NXT (fasi F6–F7):
-- colori reali, scrittura + `SAVE`, verifica dopo lo spegnimento della spada, anteprima, spada spenta e riaccesa durante l'uso.
+Restano da provare anche:
+- la richiesta di accensione del Bluetooth;
+- un telefono con Android 11 o precedente (percorso con la localizzazione).
 
-**Su un telefono con Android 11 o precedente**: il percorso con la localizzazione.
-
-**Correzioni** dei problemi emersi in `feature/hw-tuning`.
+Lato firmware del bridge: la versione risulta `0.0.0` e va impostata prima di `v0.1.0`.
 
 ### 2. Rilascio `v0.1.0`
 - Insieme al bridge `v0.1.0`.
