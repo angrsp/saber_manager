@@ -13,16 +13,6 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
-// reactive_ble_mobile 5.6.0 chiede compileSdk 37, che AGP 8.13 non trova: forzato a 36
-// (da togliere col passaggio ad AGP 9)
-subprojects {
-    afterEvaluate { project ->
-        if (project.name == "reactive_ble_mobile") {
-            project.android { compileSdkVersion 36 }
-        }
-    }
-}
-
 subprojects {
     project.evaluationDependsOn(":app")
 }

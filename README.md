@@ -37,7 +37,7 @@ lib/
 
 ## Development
 
-Requirements: Flutter 3.47 (stable), JDK 17, Android SDK 36.
+Requirements: Flutter 3.47 (stable), JDK 17, Android SDK 37.
 
 ```sh
 flutter pub get
@@ -48,8 +48,8 @@ flutter run --dart-define=FAKE_BRIDGE=true   # with a fake bridge and saber, wor
 ```
 
 Android build notes:
-- `reactive_ble_mobile` asks for `compileSdk 37`, which AGP 8.13 cannot find: `android/build.gradle` forces it to 36 until the move to AGP 9.
-- The Kotlin plugin is on 2.4.x because `flutter_reactive_ble` uses `kotlin-stdlib` 2.4.
+- AGP 9.2.1 with Gradle 9.4.1: `reactive_ble_mobile` asks for `compileSdk 37`, which AGP 9.1 (the version in the Flutter 3.47 template) only supports up to 36. For the same reason the app compiles with `compileSdk 37`; `targetSdk` stays at Flutter's default.
+- Kotlin built into AGP (`android.builtInKotlin=true`): the app no longer applies the `kotlin-android` plugin. The Kotlin plugin declared in `settings.gradle.kts` is on 2.4.x because `flutter_reactive_ble` uses `kotlin-stdlib` 2.4.
 - Location permission is declared only up to Android 11, where BLE scanning needs it; from Android 12 on, `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT` are enough.
 
 ## Branches
